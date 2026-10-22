@@ -1,0 +1,11 @@
+dist/
+.cache/
+.*-build-*/
+.*-previous-*/
+__pycache__/
+*.py[cod]
+.DS_Store
+node_modules/
+playwright-report/
+test-results/
+.claude/

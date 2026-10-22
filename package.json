@@ -1,0 +1,15 @@
+{
+  "name": "poisk-explorer",
+  "version": "1.0.0",
+  "private": true,
+  "license": "BSD-3-Clause",
+  "type": "module",
+  "description": "A static, searchable publication companion for the POISK dataset",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:py": "python3 -m unittest discover -s tests -p 'test_*.py'",
+    "build": "python3 scripts/build.py",
+    "release": "python3 scripts/release.py",
+    "serve": "python3 -m http.server 8000 --directory dist"
+  }
+}

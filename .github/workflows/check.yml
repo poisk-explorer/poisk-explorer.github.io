@@ -1,0 +1,38 @@
+name: Check POISK Explorer
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      # Catch a release pin that contradicts itself on the pull request, not after merge.
+      - name: Check the dataset release pin
+        run: python3 scripts/release.py --check
+      - name: Test the release pin and the data builder with fixtures
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Test search and export behavior
+        run: node --test tests/*.test.mjs

@@ -1,0 +1,96 @@
+name: Publish POISK Explorer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+env:
+  # A tripwire for accidental growth, not a target. Measured 2026-10-22: a full build of release
+  # 1.0.1 is 178,803,002 bytes (du -sb dist). GitHub Pages rejects a site over 1 GB, so this
+  # budget fails the run long before a deploy would, while leaving room for a larger release.
+  DIST_BYTE_BUDGET: 629145600
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      # workflow_dispatch can be started from any ref. A job-level `if` would report that as a
+      # successful all-skipped run, so refuse it loudly instead.
+      - name: Require the main branch
+        if: github.ref != 'refs/heads/main'
+        env:
+          REQUESTED_REF: ${{ github.ref }}
+        run: |
+          echo "This workflow publishes refs/heads/main only; got $REQUESTED_REF." >&2
+          exit 1
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Set up Node.js for tests
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Check the dataset release pin
+        run: python3 scripts/release.py --check
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v6
+      - name: Test data builder
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Test search and export behavior
+        run: node --test tests/*.test.mjs
+      # The pinned CSV never changes for a given configuration, so cache it on the configuration's
+      # hash. build.py re-verifies the checksum of a cache hit, so a stale entry fails loudly.
+      - name: Cache the pinned dataset download
+        uses: actions/cache@v6
+        with:
+          path: .cache
+          key: poisk-source-${{ hashFiles('dataset.config.json') }}
+      - name: Build from the pinned dataset release
+        run: python3 scripts/build.py --output dist
+      - name: Check the generated site size
+        run: |
+          bytes=$(du -sb dist | cut -f1)
+          echo "Generated site: $bytes bytes (budget $DIST_BYTE_BUDGET)." | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$bytes" -gt "$DIST_BYTE_BUDGET" ]; then
+            echo "Generated site exceeds DIST_BYTE_BUDGET; GitHub Pages rejects a site over 1 GB." >&2
+            exit 1
+          fi
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # Above deploy-pages' own 10-minute timeout, so its error is reported instead of a job timeout.
+    timeout-minutes: 25
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy site
+        id: deployment
+        uses: actions/deploy-pages@v5

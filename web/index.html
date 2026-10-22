@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Explore POISK, a curated dataset of antibody sequences and functional metadata extracted from patent literature. Search targets, antibodies, and patents.">
+  <meta name="theme-color" content="#163c36">
+  <title>POISK Explorer · Antibody sequence knowledge</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#results">Skip to results</a>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="POISK Explorer home">
+      <svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M8 7v9l10 7 10-7V7M18 23v8M8 12l10 7 10-7" stroke="currentColor" stroke-width="2.3" stroke-linejoin="round"/><circle cx="8" cy="6" r="3" fill="currentColor"/><circle cx="28" cy="6" r="3" fill="currentColor"/><circle cx="18" cy="31" r="3" fill="currentColor"/></svg>
+      <span>POISK<span class="brand-divider"></span><span class="brand-subtitle">Explorer</span></span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="#results" class="nav-active">Explore</a>
+      <button type="button" data-open="guide-dialog">Dataset guide</button>
+      <button type="button" data-open="cite-dialog">Cite POISK <span aria-hidden="true">↗</span></button>
+    </nav>
+  </header>
+
+  <main class="main-shell">
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="status-dot"></span> PATENT-DERIVED ANTIBODY DATA <span class="version" id="version">Loading release</span></div>
+        <h1 id="page-title">Antibody knowledge.<br><span>Open to exploration.</span></h1>
+        <p>Discover antibody sequences and functional metadata<br class="desktop-break"> from the global patent literature.</p>
+      </div>
+      <div class="dataset-overview" aria-label="Dataset overview">
+        <div class="overview-top"><span class="eyebrow">THE COLLECTION</span><span class="overview-symbol" aria-hidden="true">↗</span></div>
+        <div class="overview-numbers"><div><strong id="record-count">—</strong><span>binding records</span></div><div><strong id="patent-count">—</strong><span>source patents</span></div></div>
+        <div class="overview-footer"><span id="sequence-summary">Sequences. Targets. Evidence.</span><a class="source-link" href="https://zenodo.org/records/19883049" target="_blank" rel="noopener noreferrer">View on Zenodo <span aria-hidden="true">↗</span></a></div>
+      </div>
+    </section>
+
+    <section class="search-section" aria-label="Search dataset">
+      <form id="search-form" class="search-bar" role="search">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <label class="sr-only" for="search-input">Search targets, antibodies, patents, or identifiers</label>
+        <input id="search-input" type="search" placeholder="Search a target, antibody, patent, or UniProt ID…" autocomplete="off" spellcheck="false" disabled>
+        <kbd class="search-shortcut" aria-hidden="true">/</kbd>
+        <label class="sr-only" for="search-field">Search field</label>
+        <select id="search-field" disabled><option value="all">All identifiers</option><option value="target.protein_name">Target name</option><option value="target.gene_names">Gene name</option><option value="target.uniprot_id">UniProt ID</option><option value="antibody_identifier">Antibody</option><option value="antibody_discovery_status">Discovery status</option><option value="discovery_methodology.source_organism">Source organism</option><option value="discovery_methodology.specific_platform">Discovery platform</option><option value="patent_id">Patent ID</option><option value="unique_record_id">Record ID</option><option value="sequence">VH/VL sequence (exact)</option></select>
+        <button id="search-button" class="button button-primary" disabled>Search <span aria-hidden="true">↗</span></button>
+      </form>
+      <!-- No leading glyph: ⌕ renders as a missing-glyph box in the site's font stack (measured in Chromium). -->
+      <div id="sequence-hint" class="sequence-search-hint" hidden><span id="sequence-hint-text"></span><button type="button" id="sequence-hint-action" hidden></button></div>
+      <div class="search-under"><div class="examples"><span>Try a search</span><button type="button" data-example="EGFR" disabled>EGFR</button><button type="button" data-example="PD-1" disabled>PD-1</button><button type="button" data-example="Q15116" disabled>Q15116</button></div><span class="search-note">Searches names, identifiers, and exact VH/VL chains · <button type="button" data-open="guide-dialog">Search help</button></span></div>
+    </section>
+
+    <div id="load-error" class="error-banner" role="alert" hidden><strong>The dataset could not be loaded.</strong><p id="load-error-message"></p><button type="button" class="button button-secondary" id="retry-load">Try again</button></div>
+    <div class="explorer-layout">
+      <aside id="filters-panel" class="filters-panel" aria-label="Filter records">
+        <div class="filter-heading"><h2>Refine results <span id="filter-count" class="count-pill" hidden>0</span></h2><button type="button" class="text-button" id="reset-filters" disabled>Reset</button></div>
+        <div id="facets"><div class="filter-placeholder">Filters appear when the dataset is ready.</div></div>
+        <div class="availability"><h3>Data available</h3><label><input type="checkbox" data-presence="has_affinity" disabled><span>Binding affinity</span></label><label><input type="checkbox" data-presence="has_epitope" disabled><span>Epitope information</span></label><label><input type="checkbox" data-presence="has_vh" disabled><span>Heavy chain sequence</span></label><label><input type="checkbox" data-presence="has_vl" disabled><span>Light chain sequence</span></label><p class="facet-more">Tick both chains for records with a paired VH and VL.</p></div>
+        <div class="evidence-note"><span class="note-icon" aria-hidden="true">i</span><div><strong>Follow the evidence</strong><p>Audit verdicts reflect the extraction review. Open a record to read the reasoning and check its source patent.</p></div></div>
+        <a class="download-source full-download-link" href="https://zenodo.org/records/19883049/files/poisk_dataset.csv?download=1" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v9m-3-3 3 3 3-3M4 13v4h12v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Download original dataset <span aria-hidden="true">↗</span></a>
+      </aside>
+
+      <section id="results" class="results-panel" aria-label="Search results" tabindex="-1" aria-busy="true">
+        <p id="search-status" class="sr-only-status" role="status"></p>
+        <div class="results-toolbar">
+          <div class="result-heading"><h2 id="results-count">Loading the collection…</h2><span id="results-description">Preparing searchable metadata</span><span id="relevance-note" class="relevance-note" hidden></span><span id="search-warning" class="search-warning" hidden></span></div>
+          <div class="results-actions"><button class="button button-secondary mobile-filter" id="toggle-filters" aria-controls="filters-panel" aria-expanded="false">Filters</button><button type="button" class="button button-secondary" id="share-search" disabled><span aria-hidden="true">↗</span> Share</button><button type="button" class="button button-secondary export-trigger" id="export-results" disabled><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M10 3v9m-3-3 3 3 3-3M4 13v4h12v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Export results</button></div>
+        </div>
+        <div id="active-filters" class="active-filters" hidden></div>
+        <div id="loading-state" class="loading-state"><span class="spinner"></span><strong>Opening the collection</strong><p>The compact search index loads once. Full records load as you explore.</p></div>
+        <div id="empty-state" class="empty-state" hidden><div class="empty-symbol" aria-hidden="true">⌕</div><h3>No matching records</h3><p id="empty-detail">Try a shorter identifier, another target name, or fewer filters.</p><button type="button" class="button button-secondary" id="clear-search">Clear search and filters</button></div>
+        <p id="table-scroll-hint" class="sr-only">This table scrolls sideways. With it focused, use the left and right arrow keys to reach every column.</p>
+        <div id="table-container" class="table-container" role="region" aria-label="Matching records table" aria-describedby="table-scroll-hint" tabindex="0" hidden>
+          <table id="results-table"><caption class="sr-only">Matching POISK binding records. Open a record for its full evidence and sequences.</caption><thead><tr><th scope="col" data-sort="target.protein_name"><button type="button">Target <span aria-hidden="true">↕</span></button></th><th scope="col" data-sort="antibody_identifier"><button type="button">Antibody <span aria-hidden="true">↕</span></button></th><th scope="col" data-sort="patent_id"><button type="button">Patent <span aria-hidden="true">↕</span></button></th><th scope="col" data-sort="target.organism"><button type="button">Organism <span aria-hidden="true">↕</span></button></th><th scope="col">Affinity <span class="table-note">as reported</span></th><th scope="col" data-sort="audit.verdict"><button type="button">Audit <span aria-hidden="true">↕</span></button></th><th scope="col"><span class="sr-only">Details</span></th></tr></thead><tbody id="result-rows"></tbody></table>
+        </div>
+        <div class="pagination" id="pagination" hidden><div class="page-size"><label for="page-size">Rows per page</label><select id="page-size"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></div><span id="page-range"></span><div class="page-navigation"><button type="button" id="first-page" aria-label="First page">«</button><button type="button" id="previous-page" aria-label="Previous page">‹</button><span id="page-position"></span><button type="button" id="next-page" aria-label="Next page">›</button><button type="button" id="last-page" aria-label="Last page">»</button></div></div>
+        <p class="table-footnote">One row represents a binding record. A single antibody may appear in multiple records.</p>
+      </section>
+    </div>
+  </main>
+  <footer class="site-footer"><div><strong>POISK</strong><span>Patent-extracted Organization of Immunoglobulin Sequence Knowledge</span></div><div><span id="footer-version"></span><a class="source-link" href="https://zenodo.org/records/19883049" target="_blank" rel="noopener noreferrer">Dataset & citation ↗</a></div></footer>
+
+  <dialog id="record-dialog" class="record-dialog" aria-labelledby="record-title"><div class="drawer-top"><span class="eyebrow">RECORD DETAILS</span><div><button type="button" class="text-button" id="share-record">Copy link ↗</button><button type="button" class="icon-button" data-close aria-label="Close record details">×</button></div></div><div id="record-content"><h2 id="record-title">Loading record…</h2></div></dialog>
+  <dialog id="guide-dialog" class="info-dialog" aria-labelledby="guide-title"><div class="dialog-top"><span class="eyebrow">USING THE COLLECTION</span><button type="button" class="icon-button" data-close aria-label="Close dataset guide">×</button></div><h2 id="guide-title">A guide to POISK</h2><p>POISK brings antibody sequences and functional metadata from patent literature into a structured research dataset.</p><h3>Find a record</h3><p>Free text searches record IDs, patent IDs, antibody identifiers, target protein and gene names, UniProt IDs, and the discovery status, source organism, and platform columns. Words are matched together, ignoring case, punctuation, and Greek-letter spelling, so “PD-1” also finds “PD1”, and “TGFβ” finds “TGF-beta”. Use quotation marks for a phrase. When no column sort is chosen, matches are ordered by quality, with whole-word hits on a target or antibody name first.</p><h3>Match an exact chain</h3><p>Choose “VH/VL sequence (exact)” and paste a chain to compare it against the <strong id="guide-sequence-count">—</strong> distinct VH and VL sequences in this release. Only letters are compared, so spacing, numbering, and case do not matter — but the comparison is exact and whole-chain. A fragment, a single-residue variant, or a chain shorter than 20 residues will not match, and an empty result is not evidence that a sequence is unpatented. Alignment, substring, and approximate sequence matching are not provided. Antibody type, target type, organism, assay method, epitope type, and audit verdict are filters rather than free text; audit reasoning and target sequences appear in a record but are not searched.</p><h3>Refine your results</h3><p>Combine filters with your search. Each filter accepts several values at once, and the count beside an option follows your current results. Organism and assay labels preserve the original dataset wording, so variants such as “Human” and “Homo sapiens” remain separate options — select both to see both. Type inside a filter to narrow its labels, then select every match at once; long lists render the first 50 matches, so type to reach the rest. Filters and column sorting are paused during an exact sequence lookup.</p><h3>Read the evidence</h3><p>Records were extracted using language models. CONFIRMED, PLAUSIBLE, CONTRADICTED, and NOT_FOUND are extraction audit verdicts, not independent experimental validation. Each record retains its audit explanation and patent reference.</p><h3>Interpret measurements</h3><p>Affinity values retain their original units, qualifiers, and measurement descriptions. They are not normalized into a single numeric scale. Missing values are shown as a dash. The data-available filters exclude empty values and common placeholders; ticking both chain boxes selects records that report a paired heavy and light chain.</p><h3>Use and cite</h3><p>Export matching metadata, complete records, or the VH and VL chains as FASTA. The original CSV, release information, and applicable dataset license are available on Zenodo. This explorer does not assign a new license to the data.</p><a class="button button-primary source-link" href="https://zenodo.org/records/19883049" target="_blank" rel="noopener noreferrer">Visit dataset on Zenodo ↗</a></dialog>
+  <dialog id="cite-dialog" class="info-dialog" aria-labelledby="cite-title"><div class="dialog-top"><span class="eyebrow">RESEARCH RESOURCE</span><button type="button" class="icon-button" data-close aria-label="Close citation">×</button></div><h2 id="cite-title">Cite this dataset</h2><p>Please cite the version you used so others can reproduce your work.</p><blockquote id="citation-text">Loading citation…</blockquote><div class="dialog-actions"><button class="button button-primary" id="copy-citation" type="button" disabled>Copy citation</button><a class="button button-secondary source-link" href="https://zenodo.org/records/19883049" target="_blank" rel="noopener noreferrer">View release ↗</a></div><p class="muted" id="license-text">License details are provided with the Zenodo release.</p></dialog>
+  <dialog id="export-dialog" class="info-dialog" aria-labelledby="export-title"><div class="dialog-top"><span class="eyebrow">TAKE THE DATA WITH YOU</span><button type="button" class="icon-button" data-close aria-label="Close export options">×</button></div><h2 id="export-title">Export matching records</h2><p id="export-description"></p><fieldset class="export-options"><legend class="sr-only">Export format</legend><label><input type="radio" name="export-kind" value="metadata" checked><span><strong>Searchable metadata</strong><span>Identifiers, targets, affinity text, audit verdicts, and availability flags.</span></span></label><label><input type="radio" name="export-kind" value="full"><span><strong>Complete records</strong><span>All original columns, including sequences and audit explanations. Fetches the selected records before downloading.</span></span></label><label><input type="radio" name="export-kind" value="fasta"><span><strong>VH/VL sequences (FASTA)</strong><span>One entry per chain present, headed by record ID, chain, antibody, patent, and target. Plain text, 60 residues per line. <span id="export-fasta-note">Some chains contain letters outside the standard 20 amino acids, so strict numbering tools may reject those entries.</span></span></span></label></fieldset><p class="muted">For the complete, unmodified release, <a class="full-download-link" href="https://zenodo.org/records/19883049/files/poisk_dataset.csv?download=1" target="_blank" rel="noopener noreferrer">download the original CSV from Zenodo</a>.</p><label class="spreadsheet-option"><input type="checkbox" id="spreadsheet-safe" checked><span>Protect spreadsheet formulas<span>Prefixes formula-like text with an apostrophe. Uncheck to preserve source text exactly.</span></span></label><div id="export-progress" role="status" hidden></div><div class="dialog-actions"><button class="button button-primary" id="start-export" type="button">Download CSV</button><button class="button button-secondary" id="cancel-export" type="button" hidden>Cancel export</button></div></dialog>
+  <div id="toast" class="toast" role="status" style="opacity:0;pointer-events:none" title="Dismiss"></div>
+  <!-- Every Zenodo href in this file is hardcoded on purpose: these links must work when the
+       manifest fetch fails, and here when scripts never run. They are the only copies of the
+       record URL outside dataset.config.json, so re-pointing a release has to update them too. -->
+  <noscript><div class="noscript">POISK Explorer needs JavaScript for browser-based search. <a href="https://zenodo.org/records/19883049">Download the dataset from Zenodo.</a></div></noscript>
+</body>
+</html>
