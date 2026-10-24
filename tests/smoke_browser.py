@@ -3,7 +3,7 @@
 
 It drives a real Chromium against a real build and checks the things no unit test can see --
 that the worker, the generated assets and the markup agree once they are all on a page together.
-Keep it out of .github/workflows: the CI runners have neither a browser nor the 124 MB source CSV.
+Keep it out of .github/workflows: the CI runners have neither a browser nor the 234 MB source CSV.
 
 Requires playwright and its Chromium (not a project dependency; installed per machine):
     python3 -m pip install playwright && python3 -m playwright install chromium

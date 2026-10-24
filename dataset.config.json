@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
   "source": {
-    "url": "https://zenodo.org/records/19883049/files/poisk_dataset.csv?download=1",
-    "checksum": "md5:1d663c6797f03466349c995b4e8a913a"
+    "url": "https://zenodo.org/records/21775623/files/poisk_dataset.csv?download=1",
+    "checksum": "md5:f0c1f098abf1756e4b9891aa4dc028ee"
   },
   "dataset": {
     "title": "POISK: Patent-extracted Organization of Immunoglobulin Sequence Knowledge",
-    "version": "1.0.1",
-    "doi": "10.5281/zenodo.19883049",
-    "recordUrl": "https://zenodo.org/records/19883049",
-    "downloadUrl": "https://zenodo.org/records/19883049/files/poisk_dataset.csv?download=1",
+    "version": "1.1",
+    "doi": "10.5281/zenodo.21775623",
+    "recordUrl": "https://zenodo.org/records/21775623",
+    "downloadUrl": "https://zenodo.org/records/21775623/files/poisk_dataset.csv?download=1",
     "license": "CC BY 4.0",
-    "citation": "Tupikina, D., Roncoli, A., Bujotzek, A., & Abanades, B. (2026). POISK: Patent-extracted Organization of Immunoglobulin Sequence Knowledge (Version 1.0.1) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.19883049"
+    "citation": "Tupikina, D., Roncoli, A., Bujotzek, A., & Abanades, B. (2026). POISK: Patent-extracted Organization of Immunoglobulin Sequence Knowledge (Version 1.1) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.21775623"
   },
   "chunkSize": 400
 }

@@ -30,10 +30,12 @@ WEB = ROOT / "web"
 APP = "web/app.js"
 CORE = "web/search-core.js"
 MARKUP = "web/index.html"
+STYLES = "web/styles.css"
 BUILD = "scripts/build.py"
 APP_SOURCE = (WEB / "app.js").read_text(encoding="utf-8")
 CORE_SOURCE = (WEB / "search-core.js").read_text(encoding="utf-8")
 HTML_SOURCE = (WEB / "index.html").read_text(encoding="utf-8")
+STYLES_SOURCE = (WEB / "styles.css").read_text(encoding="utf-8")
 
 INDEX_FIELDS = builder.SEARCH_FIELDS + builder.FLAG_FIELDS
 # Both $() and $$() in app.js, and getElementById, in single, double or template quotes. The id
@@ -45,6 +47,25 @@ OBJECT_KEY = re.compile(r"([A-Za-z_$][\w$]*)\s*:")
 BRACKETS = {"[": "]", "{": "}", "(": ")"}
 # Attributes whose value is a space-separated list of ids the browser must be able to resolve.
 ID_REFERENCES = ("aria-labelledby", "aria-controls", "aria-describedby", "list")
+# The audit verdict vocabulary is written out three times with nothing tying the copies together:
+# the branches of auditBadge, the badge rules in the stylesheet, and the guide paragraph that
+# explains the words to a reader. Release 1.1 replaced CONTRADICTED and NOT_FOUND with REVIEW, and
+# the prose kept naming the retired pair -- no test read it, so the wrong explanation shipped green.
+# Nothing here pins the vocabulary itself: it is read out of auditBadge, and the other two must agree.
+AUDIT_BADGE = "function auditBadge(verdict) {"
+EVIDENCE_HEADING = "<h3>Read the evidence</h3>"
+VERDICT_COMPARISON = re.compile(r"normalized\s*[!=]==\s*'([A-Z_]+)'")
+BADGE_CLASS_ADDED = re.compile(r"classList\.add\('([a-z-]+)'\)")
+BADGE_RULE = re.compile(r"\.audit-badge\.([a-z-]+)\{")
+# Both sides are read with their comments stripped. Parking a branch or a rule behind a comment
+# is the ordinary way to disable one, and a disabled badge is exactly what these tests exist to
+# catch: a class with no rule renders in the base green, so an unreviewed record would read as a
+# confirmed one. (A rule re-scoped under a parent selector or into an at-rule would still slip
+# past BADGE_RULE; that needs a selector walk, and nothing in this stylesheet nests badge rules.)
+JS_COMMENT = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+# A verdict is an all-caps word; the guide's ordinary prose around it is not.
+SHOUTED_WORD = re.compile(r"\b[A-Z][A-Z_]{2,}\b")
 
 
 def skip_string(text: str, start: int) -> int:
@@ -100,6 +121,18 @@ def const_string(text: str, name: str, where: str) -> str:
     if match is None:
         raise AssertionError(f"{where} no longer declares `const {name} = '...'`; update this test with it.")
     return match.group(1)
+
+
+def paragraph_after(text: str, heading: str, where: str) -> str:
+    """The <p> that follows `heading`. A literal heading keeps the failure readable if it moves."""
+    start = text.find(heading)
+    if start < 0:
+        raise AssertionError(f"{where} no longer contains `{heading}`; update this test with it.")
+    start += len(heading)
+    end = text.find("</p>", start)
+    if end < 0:
+        raise AssertionError(f"{where}: the paragraph after `{heading}` is never closed.")
+    return text[start:end]
 
 
 def resolve_list(block: str, constants: dict[str, object], where: str) -> list[str]:
@@ -171,6 +204,13 @@ class PageContractTests(unittest.TestCase):
             bracket_block(APP_SOURCE, "const searchableFields = [", APP),
             {"TEXT_SEARCH_FIELDS": cls.text_search_fields, "SEQUENCE_FIELD": cls.sequence_field},
             f"{APP} searchableFields")
+        badge = JS_COMMENT.sub(" ", bracket_block(APP_SOURCE, AUDIT_BADGE, APP))
+        # CONFIRMED is compared with !== and styled by the base rule, so it is a verdict without
+        # a class of its own; the fallback class is added without being compared against a word.
+        cls.badge_verdicts = VERDICT_COMPARISON.findall(badge)
+        cls.badge_classes = BADGE_CLASS_ADDED.findall(badge)
+        cls.evidence_verdicts = SHOUTED_WORD.findall(
+            paragraph_after(HTML_SOURCE, EVIDENCE_HEADING, MARKUP))
 
     def assertSubset(self, values, allowed, subject, holder):
         """`subject` must be covered by `holder`; the message names both sides and the gap."""
@@ -274,6 +314,20 @@ class PageContractTests(unittest.TestCase):
         allowed = {"all", self.sequence_field, *self.text_search_fields}
         self.assertSubset(options, allowed, f'{MARKUP} #search-field option values',
                           f"{CORE} TEXT_SEARCH_FIELDS plus 'all' and {APP} SEQUENCE_FIELD")
+
+    def test_the_guide_explains_exactly_the_verdicts_the_badge_branches_on(self):
+        self.assertTrue(self.badge_verdicts,
+                        f"{APP} `{AUDIT_BADGE}` compares against no verdict word; the test regex is stale.")
+        self.assertSameSet(self.evidence_verdicts, self.badge_verdicts,
+                           f'{MARKUP} "{EVIDENCE_HEADING}" paragraph', f"{APP} auditBadge")
+
+    def test_every_badge_class_app_js_adds_is_styled(self):
+        self.assertTrue(self.badge_classes,
+                        f"{APP} `{AUDIT_BADGE}` adds no badge class; the test regex is stale.")
+        # A class with no rule renders in the base colour, so an unreviewed verdict would read as
+        # a confirmed one -- the one way this badge must never fail.
+        self.assertSameSet(BADGE_RULE.findall(CSS_COMMENT.sub(" ", STYLES_SOURCE)), self.badge_classes,
+                           f"{STYLES} .audit-badge rules", f"{APP} auditBadge classList.add")
 
     def test_table_columns_are_index_columns(self):
         # app.js fails the whole page with "Search metadata does not match the release" when a

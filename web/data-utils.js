@@ -30,6 +30,10 @@ export function safeExternalURL(value) {
  * Keys may be a full dotted path or a bare last segment. Dotted paths win, because
  * vh.seq_id and vl.seq_id (and the three sequence_from_patent columns) share a last
  * segment and used to render as the same label in one definition list.
+ *
+ * Release 1.1 adds target.sequence, target.sequence_from_uniprot and target.sequence_accession.
+ * Their last segments are unique but uninformative, and the fallback strips the "target." prefix
+ * that carries the provenance distinction, so each is spelled out here too.
  */
 const FIELD_LABELS = Object.freeze({
   unique_record_id: 'Record ID',
@@ -51,6 +55,9 @@ const FIELD_LABELS = Object.freeze({
   'vh.sequence_from_patent': 'VH sequence (as reported)',
   'vl.sequence_from_patent': 'VL sequence (as reported)',
   'target.sequence_from_patent': 'Target sequence (as reported)',
+  'target.sequence_accession': 'Target GenBank accession (patent deposit)',
+  'target.sequence_from_uniprot': 'Target sequence (from UniProt)',
+  'target.sequence': 'Target sequence (held by this release)',
   'vh.is_full_heavy_chain': 'Full heavy chain',
   'vl.is_full_light_chain': 'Full light chain',
   'discovery_methodology.cdr_modified': 'CDR modified',

@@ -21,8 +21,8 @@ const PRESENCE = {
   has_affinity: 'Binding affinity', has_epitope: 'Epitope information',
   has_vh: 'Heavy chain sequence', has_vl: 'Light chain sequence',
 };
-// Rendered options per facet. target.binding_affinity.method has 1,560 distinct values and
-// discovery_methodology.specific_platform 1,598 (measured on release v1.0.1), and rebuilding
+// Rendered options per facet. target.binding_affinity.method has 1,233 distinct values and
+// discovery_methodology.specific_platform 1,381 (measured on release v1.1), and rebuilding
 // every one of them on a keystroke is what made the filter box slow. The option list is 214px
 // tall with ~29px rows (styles.css), so 50 rendered options are already about seven screens of
 // scrolling; the rest are reached by typing, and "select all matching" covers every match.
@@ -32,9 +32,10 @@ const FACET_REDRAW_MS = 120;
 // shorter query can never be in the asset and must not be reported as "no such sequence".
 const SEQUENCE_FIELD = 'sequence';
 const MINIMUM_SEQUENCE = 20;
-// Every letter that occurs in a VH/VL cell of release v1.0.1 (measured over 166,804 indexed
-// chains): the standard 20 plus the ambiguity codes B, J, O, X, Z. U never occurs, so excluding
-// it keeps ordinary prose from being read as a peptide paste.
+// Every letter that occurs in a VH/VL cell of release v1.1 (measured over 179,628 indexed
+// chains): the standard 20 plus the ambiguity codes B, J, X, Z. Neither O nor U occurs, and
+// excluding U keeps ordinary prose from being read as a peptide paste. O stays permitted
+// because it did occur in v1.0.1 and costs nothing to accept.
 const PEPTIDE_TEXT = /^[A-TV-Z]{20,}$/;
 const fieldLabels = Object.fromEntries(FACETS);
 // One list for the select, the URL and the engine. SEQUENCE_FIELD is not an engine field: it
@@ -42,17 +43,17 @@ const fieldLabels = Object.fromEntries(FACETS);
 const searchableFields = ['all', ...TEXT_SEARCH_FIELDS, SEQUENCE_FIELD];
 const sortableFields = ['source', 'target.protein_name', 'antibody_identifier', 'patent_id', 'target.organism', 'audit.verdict'];
 // Google Patents needs the jurisdiction prefix: /patent/US5419904/en answered 200 and
-// /patent/5419904/en answered 404 (measured with curl). Every patent_id in release v1.0.1 is
-// 7 or 8 bare digits (measured: 89,074 of 89,074 cells, 10,109 distinct values).
+// /patent/5419904/en answered 404 (measured with curl). Every patent_id in release v1.1 is
+// 7 or 8 bare digits (measured: 93,193 of 93,193 cells, 10,010 distinct values).
 const US_PATENT_ID = /^\d{7,8}$/;
 // The real UniProt accession grammar with an optional isoform suffix, capturing the accession so a
 // ".2" sequence-version suffix can be displayed but left out of the link. A cell may hold several,
 // separated by a comma, a semicolon, a slash or plain whitespace.
 const UNIPROT_ACCESSION = /^((?:[OPQ]\d[A-Z0-9]{3}\d|[A-NR-Z]\d(?:[A-Z][A-Z0-9]{2}\d){1,2})(?:-\d+)?)(?:\.\d+)?$/;
-// NOT_FOUND is a documented audit verdict, so this one column always prints its literal text.
-const PLACEHOLDER_EXEMPT = new Set(['audit.verdict']);
-// Residue indices arrive from the CSV as floats. Measured ".0" cells in v1.0.1:
-// target.domain_start 19,529, target.domain_end 19,435, epitope range end 5,784, start 5,783.
+// Residue indices arrived from the CSV as floats in v1.0.1 (measured ".0" cells: target.domain_start
+// 19,529, target.domain_end 19,435, epitope range end 5,784, start 5,783). Release v1.1 writes them
+// as plain integers — measured: none of its 19,272 / 19,179 / 5,715 / 5,714 filled cells carries a
+// ".0" tail — so the strip now guards against the old shape returning rather than fixing this release.
 const INTEGER_CELLS = new Set([
   'epitope.linear_epitope_range.start', 'epitope.linear_epitope_range.end',
   'target.domain_start', 'target.domain_end',
@@ -65,16 +66,30 @@ const TABLE_FIELDS = [
   'target.binding_affinity.affinity_value', 'audit.verdict',
 ];
 // FASTA chain labels. The export covers the two antibody chains; the record drawer also offers
-// the target sequence, where the label says which chain it is.
+// the target sequences, where the label says which provenance it is.
 const CHAIN_FIELDS = [['vh.sequence_from_patent', 'VH'], ['vl.sequence_from_patent', 'VL']];
 const CHAIN_LABELS = {
   'vh.sequence_from_patent': 'VH', 'vl.sequence_from_patent': 'VL',
-  'target.sequence_from_patent': 'Target',
+  'target.sequence_from_patent': 'Target', 'target.sequence_from_uniprot': 'Target (UniProt)',
+  'target.sequence': 'Target (release)',
 };
-// Mean export bytes per record, measured over release v1.0.1: 131,778,115 B of full records and
-// 16,963,672 B of search-index rows, both over 89,074 records. FASTA: 26,670,323 B over the same
-// 89,074 records (166,804 entries, headers included), measured with this file's own formatter.
-const CSV_BYTES = { full: 1479, metadata: 190, fasta: 299 };
+// The cells that render as a capped, scrollable monospace block with copy actions, and the
+// provenance wording their toolbar prints. Named rather than matched on a 'sequence_from_patent'
+// suffix: release v1.1 added target.sequence and target.sequence_from_uniprot, which hold the whole
+// target protein (measured median 364 and 417 residues against 120 for a VH chain) and would
+// otherwise print as an uncapped wall of letters. Its third new column, target.sequence_accession,
+// is a GenBank accession rather than a sequence, so it stays an ordinary cell.
+const SEQUENCE_CELLS = new Map([
+  ['vh.sequence_from_patent', 'as reported'],
+  ['vl.sequence_from_patent', 'as reported'],
+  ['target.sequence_from_patent', 'as reported'],
+  ['target.sequence_from_uniprot', 'from UniProt'],
+  ['target.sequence', 'held by this release'],
+]);
+// Mean export bytes per record, measured over release v1.1: 242,660,662 B of full records and
+// 17,453,810 B of search-index rows, both over 93,193 records. FASTA: 28,983,727 B over the same
+// 93,193 records (179,628 entries, headers included), measured with this file's own formatter.
+const CSV_BYTES = { full: 2604, metadata: 187, fasta: 311 };
 const EXPORT_KINDS = {
   metadata: { suffix: 'metadata', extension: 'csv', type: 'text/csv;charset=utf-8', label: 'Download CSV' },
   full: { suffix: 'full-records', extension: 'csv', type: 'text/csv;charset=utf-8', label: 'Download CSV' },
@@ -146,7 +161,7 @@ function isMeaningful(raw) {
   return Boolean(text.trim()) && !placeholders.has(placeholderToken(text));
 }
 
-/** One raw cell of a 44-column record row, by column name. */
+/** One raw cell of a 47-column record row, by column name. */
 function cellOf(record, field) {
   const at = recordPositions?.[field];
   const value = at === undefined ? '' : record[at];
@@ -160,7 +175,7 @@ function cellOf(record, field) {
 function displayCell(field, raw) {
   const text = raw === null || raw === undefined ? '' : String(raw);
   if (!text.trim()) return '';
-  if (!PLACEHOLDER_EXEMPT.has(field) && !isMeaningful(text)) return '';
+  if (!isMeaningful(text)) return '';
   if (INTEGER_CELLS.has(field)) return text.replace(/^(-?\d+)\.0+$/, '$1');
   return text;
 }
@@ -311,7 +326,7 @@ function send(type, payload) {
 
 /**
  * The worker loads the index from its URL, so the main thread never parses or structured-clones
- * it (measured on a full rebuild of release v1.0.1: search.json is 16,340,593 bytes, 1,718,260
+ * it (measured on a full rebuild of release v1.1: search.json is 16,801,898 bytes, 1,761,952
  * gzipped). Only the in-process fallback, for a browser that cannot start a module worker, pays
  * that cost.
  */
@@ -458,8 +473,9 @@ function drawFacet(field) {
   if (!matching.length) fragment.append(element('p', 'facet-empty', 'No matching labels'));
   nodes.options.replaceChildren(fragment);
   nodes.matching = matching;
-  // Selecting every match is what makes a 1,560-value list usable; it covers matches that the
-  // FACET_LIMIT cap left unrendered, so it is only offered once the list has been narrowed.
+  // Selecting every match is what makes a 1,381-value list usable (the largest facet in release
+  // v1.1); it covers matches that the FACET_LIMIT cap left unrendered, so it is only offered
+  // once the list has been narrowed.
   nodes.selectAll.hidden = !query || matching.length < 2;
   nodes.selectAll.textContent = `Select all ${number(matching.length)} matching`;
 }
@@ -524,7 +540,7 @@ function renderFacets() {
     facetNodes.set(field, { facet, summary, search, selectAll, options, label, matching: facetValues[field] });
     let redraw;
     search.addEventListener('input', () => {
-      // One keystroke used to rebuild every option; these lists reach 1,598 values (measured).
+      // One keystroke used to rebuild every option; these lists reach 1,381 values (release v1.1).
       clearTimeout(redraw);
       redraw = setTimeout(() => drawFacet(field), FACET_REDRAW_MS);
     });
@@ -542,8 +558,8 @@ function renderFacets() {
 
 /**
  * facets.json is content-addressed, so unlike manifest.json it is immutable and cacheable, and
- * it is fetched alongside the index instead of being inlined in the manifest (measured: 318,236
- * bytes of facet values for this release, 49,836 gzipped).
+ * it is fetched alongside the index instead of being inlined in the manifest (measured: 265,500
+ * bytes of facet values for this release, 42,524 gzipped).
  */
 async function loadFacets() {
   const pointer = manifest.facets || {};
@@ -640,8 +656,11 @@ function syncControls() {
 function auditBadge(verdict) {
   const badge = element('span', 'audit-badge', verdict || 'Not reported');
   const normalized = (verdict || '').toUpperCase();
+  // Release v1.1 closed the vocabulary to CONFIRMED / PLAUSIBLE / REVIEW. CONFIRMED keeps the base
+  // green; an empty or unrecognised verdict, including v1.0.1's retired CONTRADICTED and NOT_FOUND
+  // if an older release is ever pinned, still falls through to the neutral .not-found chip.
   if (normalized === 'PLAUSIBLE') badge.classList.add('plausible');
-  else if (normalized === 'CONTRADICTED') badge.classList.add('contradicted');
+  else if (normalized === 'REVIEW') badge.classList.add('review');
   else if (normalized !== 'CONFIRMED') badge.classList.add('not-found');
   return badge;
 }
@@ -830,8 +849,8 @@ function loadSequenceIndex() {
 /**
  * Exact chain lookup. The engine answers with row indices into the search index, and that index
  * no longer lives on this thread, so the cells come from the detail chunks of the rows on the
- * current page: one chunk for most chains (measured: a key spans 2.05 chunks on average, median
- * 1, at most 146 of the 223 chunks for the single most repeated chain in release v1.0.1).
+ * current page: one chunk for most chains (measured: a key spans 2.03 chunks on average, median
+ * 1, at most 135 of the 233 chunks for the single most repeated chain in release v1.1).
  */
 async function lookupSequenceRows(query) {
   const empty = { total: 0, page: 1, pageCount: 0, indices: [], rows: [], matches: [], unterminatedQuote: false };
@@ -849,10 +868,12 @@ async function lookupSequenceRows(query) {
 }
 
 /**
- * Facet numbers that follow the current results instead of the build-time totals. Measured in
- * node against release v1.0.1 (89,074 rows, the six facet fields its index carries): 51.7 ms for
- * the whole dataset, 6.0 ms once an organism filter narrows it, median of 5 runs. So: once per
- * search, in the worker — never once per option or once per keystroke.
+ * Facet numbers that follow the current results instead of the build-time totals. The cost
+ * follows the size of the match set, not the presence of a filter. Measured in node against
+ * release v1.1 (93,193 rows, the nine facet fields its index carries, median of 5 runs in one
+ * process): 69.8 ms for the whole dataset, 44.0 ms for target.organism=Human (74,951 rows),
+ * 0.3 ms for target.organism=HIV-1 (1,309). So: once per search, in the worker — never once per
+ * option or once per keystroke.
  */
 async function refreshFacetCounts(call, query) {
   const fields = [...facetNodes.keys()];
@@ -981,7 +1002,7 @@ async function collectRecords(indices, convert, { signal, cache = true, onProgre
 
 /**
  * One FASTA entry per chain the record actually reports, headed by record ID, chain, antibody,
- * patent, and target. Measured over release v1.0.1: 166,804 entries, 26,670,323 bytes.
+ * patent, and target. Measured over release v1.1: 179,628 entries, 28,983,727 bytes.
  */
 function fastaFromRecord(record) {
   const header = {
@@ -1051,13 +1072,14 @@ function recordFieldList(fields, record) {
     const dd = element('dd', value ? '' : 'missing');
     // A suppressed placeholder stays reachable: the source cell did say something.
     if (!value && raw.trim()) dd.title = raw;
-    if (field.endsWith('sequence_from_patent') && value) {
+    if (SEQUENCE_CELLS.has(field) && value) {
       dd.className = 'sequence-field';
       const toolbar = element('div', 'sequence-toolbar');
-      toolbar.append(element('span', '', `${number(value.replace(/\s/g, '').length)} characters · as reported`));
+      toolbar.append(element('span', '', `${number(value.replace(/\s/g, '').length)} characters · ${SEQUENCE_CELLS.get(field)}`));
       const copy = element('button', 'text-button', 'Copy sequence');
       copy.type = 'button';
-      // Up to three sequence rows share one visible label, so the chain goes in the name.
+      // Up to five SEQUENCE_CELLS rows share one visible label, so the full field label goes in
+      // the name: the chain for a VH/VL cell, the provenance for one of the three target ones.
       copy.setAttribute('aria-label', `Copy ${label}`);
       copy.addEventListener('click', () => copyText(value, `${label} copied`));
       const fasta = element('button', 'text-button', 'Copy as FASTA');
@@ -1221,7 +1243,7 @@ async function openRecordFromURL() {
 }
 
 /**
- * One Blob part per 1,000 rows. A part per record hands the Blob 89,075 strings for the whole
+ * One Blob part per 1,000 rows. A part per record hands the Blob 93,194 strings for the whole
  * collection; the spread that used to prepend the BOM copied every one of them onto the stack.
  */
 function csvParts(lines) {
@@ -1295,7 +1317,7 @@ async function startExport() {
       count = indices.length;
       if (controller.signal.aborted) return;
       // The index rows live in the worker, so every kind below is built from full records: the
-      // 44 original columns, the chains as FASTA, or the index columns rebuilt from them.
+      // 47 original columns, the chains as FASTA, or the index columns rebuilt from them.
       const convert = kind === 'full' ? row => csvLine(row, csvOptions)
         : kind === 'fasta' ? fastaFromRecord
         : row => csvLine(metadataRow(row), csvOptions);
@@ -1309,7 +1331,7 @@ async function startExport() {
       // `some` skips the holes of a sparse array, so the old guard passed and the download
       // then wrote literal "undefined" rows. `includes` visits holes as undefined.
       if (lines.includes(undefined)) throw new Error('Some records were not loaded. Please retry the export.');
-      // unshift rather than a spread into a new array: this list reaches 89,074 strings.
+      // unshift rather than a spread into a new array: this list reaches 93,193 strings.
       if (kind === 'full') lines.unshift(csvLine(manifest.fields, csvOptions));
       else if (kind === 'metadata') lines.unshift(csvLine(indexFields, csvOptions));
       downloadExport(withBOM(csvParts(lines), csvOptions.spreadsheetSafe), kind);

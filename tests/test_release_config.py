@@ -16,23 +16,24 @@ release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release)
 CONFIG = ROOT / "dataset.config.json"
 
-# Trimmed capture of https://zenodo.org/api/records/19883049 (fetched 2026-10-22): only the
-# fields the release tool reads. Values are the publisher's, so re-pinning the already pinned
-# record must reproduce dataset.config.json exactly.
+# Trimmed capture of https://zenodo.org/api/records/21775623 (fetched 2026-10-24): only the
+# fields the release tool reads. The published record carries 18 files; the two the tool opens are
+# enough here. Values are the publisher's, so re-pinning the already pinned record must reproduce
+# dataset.config.json exactly.
 ZENODO_RECORD = {
-    "doi": "10.5281/zenodo.19883049",
-    "links": {"self": "https://zenodo.org/api/records/19883049", "self_html": "https://zenodo.org/records/19883049"},
+    "doi": "10.5281/zenodo.21775623",
+    "links": {"self": "https://zenodo.org/api/records/21775623", "self_html": "https://zenodo.org/records/21775623"},
     "files": [
-        {"key": "poisk_dataset.csv", "size": 124175590, "checksum": "md5:1d663c6797f03466349c995b4e8a913a",
-         "links": {"self": "https://zenodo.org/api/records/19883049/files/poisk_dataset.csv/content"}},
-        {"key": "poisk_dataset_column_description.csv", "size": 4707, "checksum": "md5:9aca92a984c931bdec9e86fa62d41a06",
-         "links": {"self": "https://zenodo.org/api/records/19883049/files/poisk_dataset_column_description.csv/content"}},
+        {"key": "poisk_dataset.csv", "size": 234128089, "checksum": "md5:f0c1f098abf1756e4b9891aa4dc028ee",
+         "links": {"self": "https://zenodo.org/api/records/21775623/files/poisk_dataset.csv/content"}},
+        {"key": "poisk_dataset_column_description.csv", "size": 5415, "checksum": "md5:24fffaa865572d6b7723d5ee7c153bdd",
+         "links": {"self": "https://zenodo.org/api/records/21775623/files/poisk_dataset_column_description.csv/content"}},
     ],
     "metadata": {
         "title": "POISK: Patent-extracted Organization of Immunoglobulin Sequence Knowledge",
-        "version": "1.0.1",
-        "publication_date": "2026-04-29",
-        "doi": "10.5281/zenodo.19883049",
+        "version": "1.1",
+        "publication_date": "2026-10-23",
+        "doi": "10.5281/zenodo.21775623",
         "license": {"id": "cc-by-4.0"},
         "creators": [
             {"name": "Tupikina, Daria"},
@@ -80,11 +81,15 @@ class CommittedPinTests(unittest.TestCase):
         """web/index.html hard-codes the record for the no-JS and failed-fetch paths."""
         markup = ROOT / "web/index.html"
         self.assertEqual(release.markup_problems(self.config, markup), [])
+        # Derived from the committed pin, so re-pointing the release cannot turn the replace below
+        # into a no-op that leaves this test asserting against an unmodified file.
+        pinned = release.record_id(self.config["dataset"]["doi"])
         stale = self.root / "index.html"
-        stale.write_text(markup.read_text(encoding="utf-8").replace("zenodo.org/records/19883049",
+        stale.write_text(markup.read_text(encoding="utf-8").replace(f"zenodo.org/records/{pinned}",
                                                                     "zenodo.org/records/19730684"), encoding="utf-8")
+        self.assertNotIn(pinned, stale.read_text(encoding="utf-8"), "the replace must actually stale the markup")
         problems = release.markup_problems(self.config, stale)
-        self.assertIn("links Zenodo record(s) 19730684 but the pin is 19883049", " ".join(problems))
+        self.assertIn(f"links Zenodo record(s) 19730684 but the pin is {pinned}", " ".join(problems))
         # A draft config with no doi and no record url has nothing to compare against.
         draft = copy.deepcopy(self.config)
         draft["dataset"].update(doi="", recordUrl="", downloadUrl="")
@@ -95,10 +100,13 @@ class CommittedPinTests(unittest.TestCase):
         """--zenodo-record must not leave web/index.html pointing at the previous release."""
         markup = (ROOT / "web/index.html").read_text(encoding="utf-8")
         old_url = self.config["dataset"]["downloadUrl"]
-        new_url = old_url.replace("19883049", "20110022").replace("poisk_dataset.csv", "poisk_dataset_v2.csv")
+        # Both halves come from the committed pin: neither a new record id nor a renamed CSV may
+        # turn this fake "next release" into a no-op the assertions below would still pass on.
+        old_id, old_file = release.record_id(old_url), release.file_key_of(old_url)
+        new_url = old_url.replace(old_id, "20110022").replace(old_file, "poisk_dataset_v2.csv")
         moved = release.retarget_markup(markup, old_url, new_url)
-        self.assertNotIn("19883049", moved)
-        self.assertNotIn("poisk_dataset.csv", moved)
+        self.assertNotIn(old_id, moved)
+        self.assertNotIn(old_file, moved)
         self.assertIn("zenodo.org/records/20110022", moved)
         self.assertIn("/files/poisk_dataset_v2.csv", moved)
         # Same release in, same bytes out, so a no-op re-pin never rewrites the file.
@@ -149,7 +157,7 @@ class CommittedPinTests(unittest.TestCase):
 class ZenodoResponseTests(unittest.TestCase):
     def test_repinning_the_pinned_record_changes_nothing(self):
         committed = json.loads(CONFIG.read_text(encoding="utf-8"))
-        updated = release.config_from_record(committed, ZENODO_RECORD, "19883049", "poisk_dataset.csv")
+        updated = release.config_from_record(committed, ZENODO_RECORD, "21775623", "poisk_dataset.csv")
         self.assertEqual(release.serialize(updated), CONFIG.read_text(encoding="utf-8"))
 
     def test_citation_matches_the_published_wording(self):
@@ -200,7 +208,7 @@ class ZenodoResponseTests(unittest.TestCase):
         for message, (file_key, override) in cases.items():
             record = dict(copy.deepcopy(ZENODO_RECORD), **override)
             with self.subTest(message=message), self.assertRaisesRegex(release.ReleaseError, message):
-                release.config_from_record(committed, record, "19883049", file_key)
+                release.config_from_record(committed, record, "21775623", file_key)
         with self.assertRaisesRegex(release.ReleaseError, "does not belong to Zenodo record"):
             release.config_from_record(committed, copy.deepcopy(ZENODO_RECORD), "19730684", "poisk_dataset.csv")
 
@@ -224,12 +232,14 @@ class PreviewTests(unittest.TestCase):
         self.output = self.root / "preview.config.json"
 
     def test_preview_blanks_publication_links_and_pins_the_local_digest(self):
+        # run_preview derives the label from the committed version, so read it rather than pin it.
+        draft = json.loads(CONFIG.read_text(encoding="utf-8"))["dataset"]["version"] + "-draft"
         self.assertEqual(run(release.run_preview, CONFIG, self.source, self.output, None), 0)
         preview = json.loads(self.output.read_text(encoding="utf-8"))
         self.assertEqual(preview["source"]["checksum"], "md5:" + release.file_md5(self.source))
-        self.assertEqual(preview["dataset"]["version"], "1.0.1-draft")
+        self.assertEqual(preview["dataset"]["version"], draft)
         self.assertEqual([preview["dataset"][key] for key in ("doi", "recordUrl", "downloadUrl")], ["", "", ""])
-        self.assertIn("(Version 1.0.1-draft)", preview["dataset"]["citation"])
+        self.assertIn(f"(Version {draft})", preview["dataset"]["citation"])
         self.assertNotIn("doi.org", preview["dataset"]["citation"])
         self.assertEqual(release.config_problems(release.builder.load_config(self.output)), [])
 

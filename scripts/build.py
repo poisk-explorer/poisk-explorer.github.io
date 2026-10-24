@@ -60,8 +60,9 @@ SEQUENCE_ALGORITHM = "fnv1a64"
 # verbatim, but strict numbering and alignment tools reject it, so the count is published.
 STANDARD_RESIDUES = frozenset("ACDEFGHIKLMNPQRSTVWY")
 # web/app.js links a record to Google Patents only for a bare US grant number, because that is
-# the only shape release 1.0.1 contains. A release that adds EP/WO numbers would silently lose
-# its evidence links, so the build says so rather than leaving it to be noticed in the browser.
+# the only shape release 1.1 contains (measured: 93,193 of 93,193 patent_id cells, 10,010 distinct
+# values). A release that adds EP/WO numbers would silently lose its evidence links, so the build
+# says so rather than leaving it to be noticed in the browser.
 LINKABLE_PATENT = re.compile(r"\d{7,8}")
 # Shorter strings are not meaningful chain sequences, so they are not worth a lookup key.
 MINIMUM_SEQUENCE_LENGTH = 20
@@ -403,7 +404,7 @@ def build(source: Path, output: Path, config: dict, web_root: Path = ROOT / "web
         raise BuildError(f"Missing website entry point: {web_root / 'index.html'}")
     if representations not in REPRESENTATIONS:
         raise BuildError("representations must be one of " + ", ".join(REPRESENTATIONS) + ".")
-    # A caller that already hashed the source (download_source does) must not rehash 124 MB.
+    # A caller that already hashed the source (download_source does) must not rehash 234 MB.
     checksum = checksum if checksum is not None else verify_checksum(source, config["source"]["checksum"])
     output.parent.mkdir(parents=True, exist_ok=True)
     for stale in output.parent.glob(f".{output.name}-build-*"):

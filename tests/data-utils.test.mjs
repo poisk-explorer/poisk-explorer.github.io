@@ -89,6 +89,10 @@ test('labels that share a last segment stay distinguishable', () => {
   assert.equal(formatLabel('vh.sequence_from_patent'), 'VH sequence (as reported)');
   assert.equal(formatLabel('vl.sequence_from_patent'), 'VL sequence (as reported)');
   assert.equal(formatLabel('target.sequence_from_patent'), 'Target sequence (as reported)');
+  // Release 1.1's provenance columns: unique last segments, but the fallback drops "target.".
+  assert.equal(formatLabel('target.sequence'), 'Target sequence (held by this release)');
+  assert.equal(formatLabel('target.sequence_from_uniprot'), 'Target sequence (from UniProt)');
+  assert.equal(formatLabel('target.sequence_accession'), 'Target GenBank accession (patent deposit)');
   assert.equal(formatLabel('vh.is_full_heavy_chain'), 'Full heavy chain');
   assert.equal(formatLabel('vl.is_full_light_chain'), 'Full light chain');
   assert.equal(formatLabel('discovery_methodology.cdr_modified'), 'CDR modified');

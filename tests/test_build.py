@@ -21,7 +21,7 @@ SPEC = importlib.util.spec_from_file_location("poisk_build", ROOT / "scripts/bui
 builder = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(builder)
 
-# The 44 columns of the pinned release, in release order (dist/data/manifest.json "fields").
+# The 47 columns of the pinned release, in release order (dist/data/manifest.json "fields").
 # Kept as a literal so a reordered or renamed source column is a test failure, not a silent change.
 RELEASE_HEADER = [
     "unique_record_id",
@@ -68,6 +68,9 @@ RELEASE_HEADER = [
     "audit.verdict",
     "audit.flags",
     "audit.reasoning",
+    "target.sequence_accession",
+    "target.sequence_from_uniprot",
+    "target.sequence",
 ]
 VH_SEQUENCE = "EVQLVESGGGLVQPGGSLRLSCAAS"
 VH_SEQUENCE_KEY = "2791bb0c6cf28767"  # fnv1a64 of VH_SEQUENCE; a hash change must break this test.

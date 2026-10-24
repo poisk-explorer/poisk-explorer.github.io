@@ -12,9 +12,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # A tripwire for accidental growth, not a target. Measured 2026-10-22: a full build of release
-  # 1.0.1 is 178,803,002 bytes (du -sb dist). GitHub Pages rejects a site over 1 GB, so this
-  # budget fails the run long before a deploy would, while leaving room for a larger release.
+  # A tripwire for accidental growth, not a target. Measured 2026-10-24: a full build of release
+  # 1.1 is 297,922,731 bytes (du -sb dist), 47% of this budget; release 1.0.1 was 178,803,002.
+  # GitHub Pages rejects a site over 1 GB, so this budget fails the run long before a deploy
+  # would, while leaving room for a larger release.
   DIST_BYTE_BUDGET: 629145600
 
 jobs:
