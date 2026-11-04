@@ -7,8 +7,12 @@ export function csvLine(values, { spreadsheetSafe = true } = {}) {
   if (!Array.isArray(values)) throw new TypeError('CSV row values must be an array.');
   return values.map((value) => {
     let text = value === null || value === undefined ? '' : String(value);
+    // The leading-zero case is the one that silently destroys a join key: 92.4% of v1.1's
+    // unique_record_id values begin with '0', and a spreadsheet reads "000001" as the number 1,
+    // so a round trip through Excel no longer joins back to POISK. Guarded only in
+    // spreadsheet-safe mode, so the raw mode still reproduces the source text exactly.
     if (spreadsheetSafe && typeof value === 'string' &&
-        (/^\s*[=+\-@]/u.test(value) || /^[\t\r]/u.test(value))) {
+        (/^\s*[=+\-@]/u.test(value) || /^[\t\r]/u.test(value) || /^0\d+$/u.test(value))) {
       text = `'${text}`;
     }
     return `"${text.replace(/"/g, '""')}"`;
@@ -57,7 +61,7 @@ const FIELD_LABELS = Object.freeze({
   'target.sequence_from_patent': 'Target sequence (as reported)',
   'target.sequence_accession': 'Target GenBank accession (patent deposit)',
   'target.sequence_from_uniprot': 'Target sequence (from UniProt)',
-  'target.sequence': 'Target sequence (held by this release)',
+  'target.sequence': 'Target sequence (carried by this release)',
   'vh.is_full_heavy_chain': 'Full heavy chain',
   'vl.is_full_light_chain': 'Full light chain',
   'discovery_methodology.cdr_modified': 'CDR modified',

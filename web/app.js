@@ -17,6 +17,7 @@ const FACETS = [
   ['epitope.type', 'Epitope type'],
   ['audit.verdict', 'Audit verdict'],
 ];
+const FACETED_FIELDS = new Set(FACETS.map(([field]) => field));
 const PRESENCE = {
   has_affinity: 'Binding affinity', has_epitope: 'Epitope information',
   has_vh: 'Heavy chain sequence', has_vl: 'Light chain sequence',
@@ -79,12 +80,20 @@ const CHAIN_LABELS = {
 // target protein (measured median 364 and 417 residues against 120 for a VH chain) and would
 // otherwise print as an uncapped wall of letters. Its third new column, target.sequence_accession,
 // is a GenBank accession rather than a sequence, so it stays an ordinary cell.
+// target.sequence is the sequence the release carries; the two *_from_* columns record what each
+// original source held, for comparison. Measured over the pinned v1.1 release: of 81,795 filled
+// target.sequence cells, 57,590 are identical to the UniProt source and 23,965 to the patent one,
+// leaving only 240 that differ from both. Printing all three in full repeats the same protein two
+// or three times and buries those 240, which are the rows worth looking at.
+const TARGET_SEQUENCE = 'target.sequence';
+const TARGET_SEQUENCE_SOURCES = ['target.sequence_from_patent', 'target.sequence_from_uniprot'];
+
 const SEQUENCE_CELLS = new Map([
   ['vh.sequence_from_patent', 'as reported'],
   ['vl.sequence_from_patent', 'as reported'],
   ['target.sequence_from_patent', 'as reported'],
   ['target.sequence_from_uniprot', 'from UniProt'],
-  ['target.sequence', 'held by this release'],
+  ['target.sequence', 'carried by this release'],
 ]);
 // Mean export bytes per record, measured over release v1.1: 242,660,662 B of full records and
 // 17,453,810 B of search-index rows, both over 93,193 records. FASTA: 28,983,727 B over the same
@@ -175,7 +184,10 @@ function cellOf(record, field) {
 function displayCell(field, raw) {
   const text = raw === null || raw === undefined ? '' : String(raw);
   if (!text.trim()) return '';
-  if (!isMeaningful(text)) return '';
+  // A faceted column keeps its source wording. Its filter offers that exact value with a count, so
+  // suppressing it here made the panel and the record contradict each other -- measured on v1.1,
+  // 20,898 cells across 13 columns, epitope.type worst among them.
+  if (!FACETED_FIELDS.has(field) && !isMeaningful(text)) return '';
   if (INTEGER_CELLS.has(field)) return text.replace(/^(-?\d+)\.0+$/, '$1');
   return text;
 }
@@ -375,11 +387,10 @@ function renderMetadata() {
   $('#patent-count').textContent = number(manifest.counts.patents);
   $('#version').textContent = `v${dataset.version}`;
   $('#footer-version').textContent = `Dataset v${dataset.version}`;
-  $('#citation-text').textContent = dataset.citation || 'Citation information is available with the dataset release.';
+  $('#dataset-citation-text').textContent = dataset.citation || 'Citation information is available with the dataset release.';
   $('#license-text').textContent = dataset.license ? `Dataset license: ${dataset.license}` : 'License details are provided with the Zenodo release.';
   setExternalLinks('.source-link', dataset.recordUrl);
   setExternalLinks('.full-download-link', dataset.downloadUrl);
-  $('#copy-citation').disabled = !dataset.citation;
   // Distinct indexed VH/VL chains. Absent in a build from the previous contract.
   const sequences = manifest.counts.sequences;
   if (sequences) $('#sequence-summary').textContent = `${number(sequences)} distinct VH/VL sequences`;
@@ -755,7 +766,7 @@ function emptyMessage() {
   if (pastedSequence(state.q).length < MINIMUM_SEQUENCE) {
     return `A chain needs at least ${MINIMUM_SEQUENCE} residues to be looked up, so this text was not compared. Paste a complete VH or VL sequence.`;
   }
-  return 'No record in this release reports this exact chain. The comparison is whole-chain and exact, so a fragment or a single-residue difference does not match — an empty result is not evidence that a sequence is unpatented.';
+  return 'No record in this release reports this exact chain. Only antibody VH and VL chains are indexed, so a target or antigen sequence is never compared and will always land here. The comparison is whole-chain and exact, so a fragment or a single-residue difference does not match — an empty result is not evidence that a sequence is unpatented.';
 }
 
 /**
@@ -1064,6 +1075,20 @@ function appendUniprot(dd, text) {
 
 function recordFieldList(fields, record) {
   const list = element('dl', 'record-dl');
+  // Which of the target source columns merely echo the sequence this release carries. Compared on
+  // residues, not bytes, so spacing or case cannot make an identical protein look like a new one.
+  const duplicateOf = new Map();
+  // Keyed by column name, like the loop below: cellOf() is for an array row and would read
+  // undefined here, which silently disabled this whole collapse without raising anything.
+  const rawOf = (field) => (record[field] === null || record[field] === undefined ? '' : String(record[field]));
+  const carried = canonicalSequence(rawOf(TARGET_SEQUENCE));
+  if (carried && fields.includes(TARGET_SEQUENCE)) {
+    for (const source of TARGET_SEQUENCE_SOURCES) {
+      if (fields.includes(source) && canonicalSequence(rawOf(source)) === carried) {
+        duplicateOf.set(source, TARGET_SEQUENCE);
+      }
+    }
+  }
   for (const field of fields) {
     const raw = record[field] === null || record[field] === undefined ? '' : String(record[field]);
     const value = displayCell(field, raw);
@@ -1072,7 +1097,11 @@ function recordFieldList(fields, record) {
     const dd = element('dd', value ? '' : 'missing');
     // A suppressed placeholder stays reachable: the source cell did say something.
     if (!value && raw.trim()) dd.title = raw;
-    if (SEQUENCE_CELLS.has(field) && value) {
+    if (duplicateOf.has(field) && value) {
+      // Identical to the sequence already printed above, so say so rather than repeat it.
+      dd.className = 'sequence-echo';
+      dd.textContent = `Identical to ${formatLabel(duplicateOf.get(field))}.`;
+    } else if (SEQUENCE_CELLS.has(field) && value) {
       dd.className = 'sequence-field';
       const toolbar = element('div', 'sequence-toolbar');
       toolbar.append(element('span', '', `${number(value.replace(/\s/g, '').length)} characters · ${SEQUENCE_CELLS.get(field)}`));
@@ -1110,6 +1139,27 @@ function recordFieldList(fields, record) {
   return list;
 }
 
+/**
+ * The target.* columns in release order, except the three sequence columns are pulled together at
+ * the position of whichever came first, with the release's own sequence leading. v1.1 appended
+ * target.sequence last, so without this the full protein prints ten fields below its own source.
+ */
+function targetFields(fields) {
+  const all = fields.filter(field => field.startsWith('target.'));
+  const trio = [TARGET_SEQUENCE, ...TARGET_SEQUENCE_SOURCES].filter(field => all.includes(field));
+  if (trio.length < 2) return all;
+  const ordered = [];
+  let placed = false;
+  for (const field of all) {
+    if (trio.includes(field)) {
+      if (!placed) { ordered.push(...trio); placed = true; }
+      continue;
+    }
+    ordered.push(field);
+  }
+  return ordered;
+}
+
 function renderRecord(row) {
   const record = Object.fromEntries(manifest.fields.map((field, i) => [field, row[i]]));
   const content = $('#record-content');
@@ -1133,7 +1183,7 @@ function renderRecord(row) {
   content.append(summary);
   const groups = [
     ['Antibody', ['antibody_identifier', 'antibody_type', 'antibody_discovery_status', 'vh.seq_id', 'vh.is_full_heavy_chain', 'vh.sequence_from_patent', 'vl.seq_id', 'vl.is_full_light_chain', 'vl.sequence_from_patent', 'similar_antibody_seq_ids']],
-    ['Target & binding', manifest.fields.filter(field => field.startsWith('target.'))],
+    ['Target & binding', targetFields(manifest.fields)],
     ['Epitope', manifest.fields.filter(field => field.startsWith('epitope.'))],
     ['Discovery', manifest.fields.filter(field => field.startsWith('discovery_methodology.'))],
   ];
@@ -1150,7 +1200,12 @@ function renderRecord(row) {
   const raw = element('details');
   raw.append(element('summary', '', `All ${manifest.fields.length} original fields`));
   const list = element('dl', 'record-dl');
-  for (const field of manifest.fields) list.append(element('dt', '', field), element('dd', '', record[field] || '—'));
+  for (const field of manifest.fields) {
+    // Capped like the grouped view above: target.sequence alone runs to a measured 546 characters
+    // on average, and three of them uncapped turn this disclosure into a wall of letters.
+    const cell = element('dd', SEQUENCE_CELLS.has(field) ? 'sequence-text' : '', record[field] || '—');
+    list.append(element('dt', '', field), cell);
+  }
   raw.append(list);
   rawSection.append(raw);
   content.append(rawSection);
@@ -1196,11 +1251,13 @@ async function openRecord(index, expectedId, { push = false, opener = null } = {
 function showMissingRecord(id, detail) {
   const current = manifest.dataset.version;
   const shared = recordVersion && recordVersion !== current ? recordVersion : null;
-  const heading = element('h2', '', detail ? 'Record unavailable' : 'Record not in this release');
+  const heading = element('h2', '', detail ? 'Record unavailable' : shared ? 'Record belongs to another release' : 'Record not in this release');
   heading.id = 'record-title';
   const explanation = detail
     ? `This link could not be opened: ${detail}`
-    : `Record ${id} is not part of dataset v${current}${shared ? `, and this link was shared from v${shared}` : ''}. Record identifiers are regenerated for every release, so a link made against another version cannot be resolved here.`;
+    : shared
+      ? `This record link (${id}) was shared from dataset v${shared}, but this explorer is showing v${current}. Record identifiers are regenerated for every release, so this link cannot be resolved against the current dataset.`
+      : `Record ${id} is not part of dataset v${current}. Record identifiers are regenerated for every release, so a link made against another version cannot be resolved here.`;
   const nodes = [heading, element('p', 'record-error', explanation)];
   const url = safeExternalURL(manifest.dataset.recordUrl);
   if (url) {
@@ -1221,6 +1278,12 @@ async function openRecordFromURL() {
   const id = currentRecord;
   // The same guard openRecord uses: a record the user just clicked must win over the URL.
   const call = ++recordRequest;
+  // Even an ID that exists now may name an unrelated record in the shared release. Reject it
+  // before lookup/openRecord can replace the link's version with the current one.
+  if (recordVersion && recordVersion !== manifest.dataset.version) {
+    showMissingRecord(id);
+    return;
+  }
   try {
     const found = await send('lookup', id);
     if (call !== recordRequest) return;
@@ -1229,12 +1292,6 @@ async function openRecordFromURL() {
       return;
     }
     await openRecord(found.index, id);
-    // The id resolved, but ids are regenerated per release: a link from another version can land
-    // on a different record entirely, so say so rather than showing it as if it were the one meant.
-    if (call === recordRequest && recordVersion && recordVersion !== manifest.dataset.version) {
-      $('#record-content').prepend(element('p', 'record-error',
-        `This link was shared from dataset v${recordVersion}, and record identifiers are regenerated for every release. The record below may not be the one the link meant — check it against v${recordVersion}.`));
-    }
   } catch (error) {
     // This runs on a page that already loaded, so it reports itself and nothing else.
     if (call !== recordRequest) return;
@@ -1574,8 +1631,8 @@ $('#export-dialog').addEventListener('close', cancelExport);
 $('#share-search').addEventListener('click', () => { writeURL(); copyText(location.href, 'Search link copied'); });
 $('#share-record').addEventListener('click', () => { writeURL(); copyText(location.href, 'Record link copied'); });
 $('#copy-citation').addEventListener('click', () => {
-  const citation = manifest?.dataset.citation;
-  // The button is disabled until the manifest lands; this is the belt to that braces.
+  // The paper citation is static and remains available even if the dataset cannot load.
+  const citation = $('#citation-text').textContent.trim();
   if (citation) copyText(citation, 'Citation copied');
 });
 $('#export-results').addEventListener('click', () => {

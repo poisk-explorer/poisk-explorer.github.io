@@ -90,7 +90,7 @@ test('labels that share a last segment stay distinguishable', () => {
   assert.equal(formatLabel('vl.sequence_from_patent'), 'VL sequence (as reported)');
   assert.equal(formatLabel('target.sequence_from_patent'), 'Target sequence (as reported)');
   // Release 1.1's provenance columns: unique last segments, but the fallback drops "target.".
-  assert.equal(formatLabel('target.sequence'), 'Target sequence (held by this release)');
+  assert.equal(formatLabel('target.sequence'), 'Target sequence (carried by this release)');
   assert.equal(formatLabel('target.sequence_from_uniprot'), 'Target sequence (from UniProt)');
   assert.equal(formatLabel('target.sequence_accession'), 'Target GenBank accession (patent deposit)');
   assert.equal(formatLabel('vh.is_full_heavy_chain'), 'Full heavy chain');
@@ -164,4 +164,16 @@ test('a pasted FASTA record looks up by its residues, not its header', () => {
   // A ';' comment line is the other FASTA dialect, and a header with no body yields nothing.
   assert.equal(pastedSequence(`; a comment\n${sequence}`), sequence);
   assert.equal(pastedSequence('>000000|VH|L612'), '');
+});
+
+test('spreadsheet-safe mode protects a leading-zero key from being read as a number', () => {
+  // 92.4% of v1.1's unique_record_id values start with '0'. A spreadsheet reads "000001" as 1, so
+  // an export opened in Excel no longer joins back to POISK on its own primary key.
+  assert.equal(csvLine(['000001'], { spreadsheetSafe: true }), '"\'000001"\r\n');
+  assert.equal(csvLine(['474677273107'], { spreadsheetSafe: true }), '"474677273107"\r\n', 'no leading zero, no loss');
+  assert.equal(csvLine(['0'], { spreadsheetSafe: true }), '"0"\r\n', 'a bare zero loses nothing');
+  assert.equal(csvLine(['0.5'], { spreadsheetSafe: true }), '"0.5"\r\n', 'a decimal is not a truncated key');
+  assert.equal(csvLine(['0A1'], { spreadsheetSafe: true }), '"0A1"\r\n', 'already text to a spreadsheet');
+  // Raw mode still reproduces the source exactly, which is what that checkbox promises.
+  assert.equal(csvLine(['000001'], { spreadsheetSafe: false }), '"000001"\r\n');
 });

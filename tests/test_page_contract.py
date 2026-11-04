@@ -66,6 +66,10 @@ JS_COMMENT = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
 CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 # A verdict is an all-caps word; the guide's ordinary prose around it is not.
 SHOUTED_WORD = re.compile(r"\b[A-Z][A-Z_]{2,}\b")
+# All-caps words the evidence paragraph may use that are not audit verdicts. Add to this set
+# when the guide gains an acronym; a shouted word in neither this set nor auditBadge is how a
+# retired verdict left behind in the copy gets caught.
+GUIDE_ACRONYMS = frozenset({"POISK", "LLM", "CSV", "FASTA", "UNIPROT", "DNA", "RNA"})
 
 
 def skip_string(text: str, start: int) -> int:
@@ -318,8 +322,15 @@ class PageContractTests(unittest.TestCase):
     def test_the_guide_explains_exactly_the_verdicts_the_badge_branches_on(self):
         self.assertTrue(self.badge_verdicts,
                         f"{APP} `{AUDIT_BADGE}` compares against no verdict word; the test regex is stale.")
-        self.assertSameSet(self.evidence_verdicts, self.badge_verdicts,
-                           f'{MARKUP} "{EVIDENCE_HEADING}" paragraph', f"{APP} auditBadge")
+        # Two directions, deliberately asymmetric. Every verdict the badge branches on must be
+        # explained; but the paragraph is prose, so an ordinary acronym must not fail the build --
+        # only a shouted word that is neither a live verdict nor a known acronym, which is what a
+        # retired verdict (CONTRADICTED, NOT_FOUND) left behind in the copy would look like.
+        self.assertSubset(self.badge_verdicts, self.evidence_verdicts,
+                          f"{APP} auditBadge verdict", f'{MARKUP} "{EVIDENCE_HEADING}" paragraph')
+        self.assertSubset(self.evidence_verdicts, set(self.badge_verdicts) | GUIDE_ACRONYMS,
+                          f'{MARKUP} "{EVIDENCE_HEADING}" shouted word',
+                          f"{APP} auditBadge verdicts plus GUIDE_ACRONYMS")
 
     def test_every_badge_class_app_js_adds_is_styled(self):
         self.assertTrue(self.badge_classes,

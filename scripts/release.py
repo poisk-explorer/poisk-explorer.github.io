@@ -36,7 +36,7 @@ RECORD_IN_URL = re.compile(r"/records?/(\d+)")
 RECORD_IN_DOI = re.compile(r"zenodo\.(\d+)", re.IGNORECASE)
 # Zenodo reports a license identifier, never a display label. Only identifiers whose terms we
 # can name are accepted, so a re-pin cannot invent a license for the dataset. The identifier
-# verified against record 19883049 is "cc-by-4.0"; the rest of the table is the same CC family.
+# verified against the pinned record is "cc-by-4.0"; the rest of the table is the same CC family.
 LICENSE_LABELS = {
     "cc-by-4.0": "CC BY 4.0",
     "cc-by-sa-4.0": "CC BY-SA 4.0",
@@ -144,7 +144,9 @@ def config_problems(config: dict) -> list[str]:
         problems.append("source.url must point at a Zenodo record.")
     version, doi = dataset.get("version") or "", dataset.get("doi") or ""
     citation = dataset.get("citation") or ""
-    if version and version not in citation:
+    # Bounded, not a bare substring: version "1.1" is contained in a citation that says "1.10",
+    # so the loose test would pass a citation describing a different release.
+    if version and not re.search(rf"(?<![\w.]){re.escape(version)}(?![\w.])", citation):
         problems.append(f"dataset.version {version!r} does not appear in dataset.citation.")
     if doi:
         if doi not in citation:

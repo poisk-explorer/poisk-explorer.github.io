@@ -35,7 +35,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 # The page debounces typing by 180 ms (app.js) and the worker answers in tens of milliseconds on
 # localhost, so every wait below is a generous multiple of the work it waits for.
@@ -200,6 +200,27 @@ def read_asset(dist: Path, *candidates) -> dict:
                      f"is it the build the URL serves? Pass --dist.")
 
 
+def pick_echoed_target(dist: Path, manifest: dict):
+    """A record whose target.sequence is also held, byte for byte, by one of its source columns.
+
+    Measured over v1.1: 81,555 of 81,795 filled target.sequence cells are identical to a sibling,
+    so the drawer collapses the sibling to one line instead of printing the protein twice. Returns
+    (record id, residue count, echoed column) or None if the first chunk has no such record.
+    """
+    carried = manifest["fields"].index("target.sequence")
+    identifier = manifest["fields"].index("unique_record_id")
+    pattern = manifest["details"].get("pattern") or manifest["details"].get("gzipPattern")
+    chunk = read_asset(dist, pattern.replace("{chunk}", "0"))
+    for row in chunk["rows"]:
+        value = canonical(row[carried])
+        if len(value) < 20:
+            continue
+        for source in ("target.sequence_from_uniprot", "target.sequence_from_patent"):
+            if canonical(row[manifest["fields"].index(source)]) == value:
+                return row[identifier], len(value), source
+    return None
+
+
 def pick_chain(dist: Path, manifest: dict):
     """A real VH sequence from the build, with the record count its own sequences.json promises.
 
@@ -283,6 +304,7 @@ def run(url, dist, options):
     manifest = read_asset(dist, "data/manifest.json")
     facets = read_asset(dist, manifest["facets"].get("url"), manifest["facets"].get("gzipUrl"))
     chain, chain_key, chain_records = pick_chain(dist, manifest)
+    echoed = pick_echoed_target(dist, manifest)
     downloads = Path(tempfile.mkdtemp(prefix="poisk-smoke-"))
     try:
         with sync_playwright() as driver:
@@ -485,6 +507,60 @@ def run(url, dist, options):
                                        timeout=SETTLE_MS * scale)
                 check.require(not page.locator("#record-dialog[open]").count(),
                               f"record parameter: {parse_qs(urlsplit(page.url).query).get('record')}")
+
+            with report.step("a stale version link never opens an unrelated current record") as check:
+                # Reuse the ID just resolved above: regenerated IDs can exist in both releases.
+                parts = urlsplit(record_url)
+                parameters = parse_qs(parts.query)
+                shared_version = "0.0-smoke-previous-release"
+                parameters["v"] = [shared_version]
+                stale_url = parts._replace(query=urlencode(parameters, doseq=True)).geturl()
+                page.goto(stale_url, wait_until="load")
+                page.wait_for_selector("#record-dialog[open]", timeout=READY_MS * scale)
+                page.wait_for_function(
+                    "() => !/Loading/.test(document.querySelector('#record-title').textContent)",
+                    timeout=SETTLE_MS * scale)
+                message = page.inner_text("#record-content")
+                check.require(
+                    page.inner_text("#record-title") == "Record belongs to another release"
+                    and shared_version in message
+                    and f"v{manifest['dataset']['version']}" in message
+                    and not page.locator("#record-content .record-summary").count()
+                    and parse_qs(urlsplit(page.url).query).get("v") == [shared_version],
+                    f"{message[:200]} | version in URL: {parse_qs(urlsplit(page.url).query).get('v')}")
+            page.goto(options.url, wait_until="load")
+            wait_ready(page, scale)
+
+            with report.step("a duplicated target sequence is printed once, not twice") as check:
+                if echoed is None:
+                    check.require(True, "no echoed target sequence in the first chunk; nothing to check")
+                else:
+                    record_id, residues, source = echoed
+                    page.goto(f"{options.url}?record={record_id}", wait_until="load")
+                    page.wait_for_selector("#record-dialog[open]", timeout=READY_MS * scale)
+                    page.wait_for_function(
+                        "() => !/Loading/.test(document.querySelector('#record-title').textContent)",
+                        timeout=SETTLE_MS * scale)
+                    seen = page.evaluate("""() => {
+                        const h = [...document.querySelectorAll('#record-content h3')]
+                            .find(n => n.textContent.startsWith('Target'));
+                        const dl = h.nextElementSibling;
+                        const dts = [...dl.querySelectorAll('dt')], dds = [...dl.querySelectorAll('dd')];
+                        const rows = dts.map((d, i) => [d.textContent, dds[i].className]);
+                        return {
+                          echoes: rows.filter(r => r[1].includes('sequence-echo')).length,
+                          blocks: rows.filter(r => r[1].includes('sequence-field')).length,
+                          first: rows.filter(r => r[0].toLowerCase().includes('sequence'))[0][0],
+                        }; }""")
+                    check.require(
+                        seen["echoes"] >= 1 and seen["blocks"] == 1
+                        and "carried by this release" in seen["first"],
+                        f"record {record_id}, {residues} residues also in {source}: "
+                        f"{seen['blocks']} full block, {seen['echoes']} echo, leading row {seen['first']!r}")
+                    page.keyboard.press("Escape")
+                    page.wait_for_timeout(300)
+                    page.goto(options.url, wait_until="load")
+                    wait_ready(page, scale)
 
             with report.step("the results table is keyboard reachable") as check:
                 reachable = page.evaluate("""() => {

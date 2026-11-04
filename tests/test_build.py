@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from unittest import mock
 from urllib.error import URLError
+from urllib.parse import urljoin
 from urllib.request import Request
 
 
@@ -367,12 +368,43 @@ class BuildTests(unittest.TestCase):
         with self.assertRaisesRegex(builder.BuildError, "representations"):
             self.build(representations="brotli")
 
+    def test_a_mixed_unique_record_id_grammar_is_reported(self):
+        """
+        v1.1 shipped 85,390 six-digit ids beside 7,803 twelve-digit ones and nothing in the repo
+        could see it: RELEASE_HEADER pins column names and order only. Record links and any
+        downstream join key depend on the key's grammar, so a mix says so on stderr.
+        """
+        self.write_csv([self.row("000001"), self.row("000002")])
+        single = io.StringIO()
+        with contextlib.redirect_stderr(single):
+            self.build()
+        self.assertNotIn("value shapes", single.getvalue())
+
+        self.write_csv([self.row("000001"), self.row("474677273107")])
+        mixed = io.StringIO()
+        with contextlib.redirect_stderr(mixed):
+            self.build()
+        notice = mixed.getvalue()
+        self.assertIn("unique_record_id has 2 value shapes", notice)
+        self.assertIn("6 digits", notice)
+        self.assertIn("12 digits", notice)
+        # A shape is length plus whether it is numeric, so a same-length non-numeric key counts too.
+        self.write_csv([self.row("000001"), self.row("A00002")])
+        other = io.StringIO()
+        with contextlib.redirect_stderr(other):
+            self.build()
+        self.assertIn("6 characters", other.getvalue())
+
     def test_not_found_page_is_self_contained(self):
         self.write_csv([self.row()])
         self.build()
         page = (self.output / "404.html").read_text(encoding="utf-8")
         self.assertIn("does not exist", page)
-        self.assertIn('href="./"', page)
+        home_link = page.split('<nav><a class="button" href="', 1)[1].split('"', 1)[0]
+        for missing_path in ("/missing", "/missing/", "/missing/nested/page"):
+            with self.subTest(missing_path=missing_path):
+                self.assertEqual(urljoin("https://poisk-explorer.github.io" + missing_path, home_link),
+                                 "https://poisk-explorer.github.io/")
         self.assertIn(self.config["dataset"]["recordUrl"], page)
         for dependency in ("<script", "styles.css", "app.js", "//"):
             self.assertNotIn(dependency, page.replace("https://", ""))

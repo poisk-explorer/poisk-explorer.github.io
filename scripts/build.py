@@ -237,6 +237,7 @@ def generate_data(source: Path, staging: Path, config: dict, checksum: str, repr
     chain_cells = 0
     non_standard_cells = 0
     unlinkable_patents: set[str] = set()
+    id_shapes: set[tuple[int, bool]] = set()
     try:
         with source.open(encoding="utf-8-sig", newline="") as handle:
             reader = csv.reader(handle, strict=True)
@@ -263,6 +264,7 @@ def generate_data(source: Path, staging: Path, config: dict, checksum: str, repr
                 if record_id in ids:
                     raise BuildError(f"Duplicate unique_record_id {record_id!r} at CSV line {reader.line_num}.")
                 ids.add(record_id)
+                id_shapes.add((len(record_id), record_id.isdigit()))
                 patent = row[positions["patent_id"]]
                 if meaningful(patent):
                     patents.add(patent)
@@ -342,6 +344,12 @@ def generate_data(source: Path, staging: Path, config: dict, checksum: str, repr
     }
     # The manifest is the bootstrap document and cannot point at itself, so it is always published
     # as plain JSON whatever --representations says about the assets it describes.
+    if len(id_shapes) > 1:
+        described = ", ".join(f"{length} {'digits' if digits else 'characters'}"
+                              for length, digits in sorted(id_shapes))
+        print(f"Note: unique_record_id has {len(id_shapes)} value shapes in this release ({described}). "
+              f"Record links and any downstream join key depend on that grammar, so confirm the mix "
+              f"is intended; a single shape is the usual case.", file=sys.stderr)
     if unlinkable_patents:
         sample = ", ".join(sorted(unlinkable_patents)[:5])
         print(f"Note: {len(unlinkable_patents):,} of {len(patents):,} patent ids are not bare 7-8 digit US "
@@ -382,7 +390,7 @@ def write_not_found_page(path: Path, dataset: dict) -> None:
         '<h1>This page does not exist.</h1>\n'
         '<p>The address you requested is not part of this site. The explorer lives on a single page —'
         ' open it and search for the record you need.</p>\n'
-        f'<nav><a class="button" href="./">Open the explorer ↗</a>{zenodo}</nav>\n'
+        f'<nav><a class="button" href="/">Open the explorer ↗</a>{zenodo}</nav>\n'
         '</body>\n</html>\n',
         encoding="utf-8",
     )
